@@ -58,13 +58,14 @@ import Data.List
 import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 
-import qualified Crypto.Hash.SHA256 as SHA256
+import qualified Data.ByteArray as BA
 
 -- Cryptonite stuff
 import Crypto.Error
 import Crypto.PubKey.ECC.Types
 import qualified Crypto.PubKey.ECC.P256 as P256
 import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
+import qualified Crypto.Hash as Hash
 import Crypto.Hash.Algorithms
 
 -- | The U2F Spec (currently) exclusively supports use of the SEC p256r Curve
@@ -104,9 +105,12 @@ pubKeyShape :: ASN1 -> Bool
 pubKeyShape (BitString (BitArray len _)) = len == 520
 pubKeyShape _ = False
 
+sha256Hash :: BS.ByteString -> BS.ByteString
+sha256Hash input = BA.convert $ Hash.hashWith SHA256 input
+
 getSignatureBase :: BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString -> BS.ByteString
 getSignatureBase appId clientData keyHandle publicKey = sigBase
-  where sigBase = BS.concat([BS.pack "\NUL", SHA256.hash(appId), SHA256.hash(decodeLenient clientData), keyHandle, publicKey])
+  where sigBase = BS.concat([BS.pack "\NUL", sha256Hash(appId), sha256Hash(decodeLenient clientData), keyHandle, publicKey])
 
 getSignatureBaseFromRegistration :: Registration -> RegistrationData -> Either U2FError BS.ByteString
 getSignatureBaseFromRegistration registration registrationData = do
@@ -170,7 +174,7 @@ getSigninSignatureBase request signin signatureData = do
   userPresenceFlag <- pure $ signatureData_userPresenceFlag signatureData
   counter <- pure $ signatureData_counter signatureData
   clientData <- pure $ encodeUtf8 $ signin_clientData signin
-  Right $ BS.concat([SHA256.hash(appId), userPresenceFlag, counter, SHA256.hash(decodeLenient clientData)])
+  Right $ BS.concat([sha256Hash(appId), userPresenceFlag, counter, sha256Hash(decodeLenient clientData)])
 
 parsePublicKey :: BS.ByteString -> Maybe ECDSA.PublicKey
 parsePublicKey keyByteString = case P256.pointFromBinary keyByteString of
